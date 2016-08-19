@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<!-- saved from url=(0025)http://localhost:8080/02/ -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+  <link href="./02_files/css" rel="stylesheet">
+<style>
+body {
+  font: 10px 'Open Sans', sans-serif;
+}
+
+.bar rect {
+  fill: #4E6DD8;
+  fill-opacity: .7
+}
+
+.bar text.value {
+  fill: white;
+}
+
+.axis {
+  shape-rendering: crispEdges;
+}
+
+.axis path {
+  fill: none;
+}
+
+.x.axis line {
+  stroke: #000;
+  stroke-opacity: .8;
+}
+
+.slider {
+  position: relative;
+}
+
+output {
+  position: absolute;
+  left: 81.25px;
+  top: 33px;
+  padding: 0em;
+  background: none;
+  color: black;
+}
+
+
+</style></head>
+
+<body cz-shortcut-listen="true">
+<script src="./02_files/d3.v3.min.js"></script>
+<script src="./02_files/browser.min.js"></script>
+<script src="./02_files/lodash.min.js"></script>
+<script>
+const margin = {top: 30, right: 10, bottom: 10, left: 30};
+const w = 500 - margin.right - margin.left;
+const h = 400 - margin.top - margin.bottom;
+const padding = 25;
+
+const format = d3.format(',.0f');
+
+const x = d3.scale.linear().range([0, w]);
+const y = d3.scale.ordinal().rangeRoundBands([0, h], .5);
+ 
+const xAxis = d3.svg.axis()
+  .scale(x)
+  .orient('top')
+  .ticks(12)
+  .tickSize(-h);
+
+const yAxis = d3.svg.axis()
+  .scale(y)
+  .orient('left')
+  .tickSize(0);
+
+const svg = d3.select('body').append('svg')
+  .attr('width', w + margin.right + margin.left)
+  .attr('height', h + margin.top + margin.bottom)
+  .append('g')
+    .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+
+d3.csv('sample-data.csv', (error, data) => {
+  if (error) throw error;
+
+  // Parse strings into numbers
+  data.forEach(d => {
+    d.value = +d.value;
+    d.maxValue = +d.maxValue;
+  });
+
+  let currentData = _.cloneDeep(data);
+
+  // Set the scale domain.
+  x.domain([0, d3.max(data, d => d.value)]);
+  y.domain(data.map(d => d.name));
+
+  svg.append('g')
+    .attr('class', 'x axis')
+    .call(xAxis);
+
+  svg.append('g')
+    .attr('class', 'y axis')
+    .call(yAxis);
+
+
+  const bar = svg.selectAll('g.bar')
+    .data(data)
+    .enter().append('g')
+      .attr('class', 'bar')
+      .attr('transform', d => `translate(0, ${y(d.name)})`);
+
+  bar.append('rect')
+    .attr('width', d => x(d.value))
+    .attr('height', y.rangeBand())
+    .classed('marks', true)
+    .classed('bar', true)
+    .attr('id', (d, i) => `bar${i}`)
+    .attr('rx', 4)
+    .attr('ry', 4);
+
+  update(0.03, 0);
+
+  d3.selectAll('.y.axis text')
+    .style('fill-opacity', 0);
+
+  d3.selectAll('.y.axis path')
+    .style('stroke', 'none');
+
+  // draw 'months' label for top x-axis
+  d3.select('svg').append('g')
+    .classed('label', true)
+    .append('text')
+    .attr('x', 27)
+    .attr('y', 10)
+    .text('months as a customer');
+
+  function updateChurnData(data, churnRate) {
+    let churnData = _.cloneDeep(data);
+    const countOfCustomersToUpdate = Math.round(churnRate * churnData.length);
+    const randomIndex = Math.floor(Math.random() * churnData.length);
+
+    // pick randomly which customers will churn
+    // where churn is defined as ending their subscription 1 month before
+    // the end month in the reference 0 churn scenario
+    var randomIndices = []
+    while(randomIndices.length < countOfCustomersToUpdate){
+      var randomnumber = Math.ceil(Math.random() * (churnData.length - 1))
+      var found = false;
+      for(var i = 0; i < randomIndices.length; i++) {
+        if (randomIndices[i] == randomnumber) { found = true; break }
+      }
+      if(!found) randomIndices[randomIndices.length] = randomnumber;
+    }
+
+    // churn a number of randomly chosen customer accounts
+    randomIndices.forEach(d => {
+      churnData[d].value = churnData[d].value - 1;
+    })
+
+    console.log('churnData passed in', churnData);
+    console.log('countOfCustomersToUpdate', countOfCustomersToUpdate);
+    console.log('randomIndices', randomIndices);
+
+    return churnData;
+  }
+
+  // slider
+  const sliderDiv = d3.select('body').append('div')
+    .classed('slider', true);
+
+  sliderDiv.append('input')
+    .attr('type', 'range')
+    .attr('min', 0)
+    .attr('max', 0.2)
+    .attr('value', 0.03)
+    .attr('step', 0.01)
+    .style('top', `${h + (2 * padding)}px`)
+    .style('left', `${padding}px`)
+    .style('height', '36px')
+    .style('width', `${500 - (2 * padding) - 10}px`)
+    .style('position', 'fixed')
+    .attr('id', 'slider');
+
+  sliderDiv.append('output')
+    .attr('for', 'slider')
+    .attr('id', 'churnRate')
+    .html('0.03 churn per month');
+  
+  d3.select('#slider')
+    .on('input', function() {
+      update(+this.value, 300);
+      outputUpdate(+this.value);
+    });
+    
+  function update(sliderValue, transitionDuration) {
+    console.log('sliderValue', sliderValue);
+    // adjust the text on the range slider
+    d3.select('#nRadius-value').text(sliderValue);
+    d3.select('#nRadius').property('value', sliderValue);
+
+    currentData = updateChurnData(data, sliderValue);
+    console.log('currentData', currentData);
+
+    let bars = svg.selectAll('.bar')
+      .data([]);
+
+    bars
+      .transition()
+        .duration(transitionDuration)
+      .attr("height", h)
+      .style('fill-opacity', 1e-6)
+      .remove();
+
+    bars = svg.selectAll('rect.bar')
+      .data(currentData);
+
+    // data that needs DOM = enter() (a set/selection, not an event!)
+    bars.enter().append("rect")
+      .classed('marks', true)
+      .classed('bar', true)
+      .classed('update', true)
+      .attr('id', (d, i) => `bar${i}`);
+
+    bars.transition()
+      .duration(transitionDuration)
+      .attr('width', d => x(d.value))
+      .attr('height', y.rangeBand())
+      .attr('rx', 4)
+      .attr('ry', 4);
+
+  }
+
+  function outputUpdate(val) {
+    const sliderScale = d3.scale.linear()
+      .domain([0, 0.2])
+      .range([padding, 500 - (2 * padding) - 10]);
+
+    console.log(sliderScale(0.03));
+
+    const output = document.querySelector('#churnRate');
+    output.value = `${val} churn per month`;
+    output.style.left = `${sliderScale(val)}px`;
+  }
+});
+</script><svg width="500" height="400"><g transform="translate(30,30)"><g class="x axis"><g class="tick" transform="translate(0,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">0</text></g><g class="tick" transform="translate(31.081081081081077,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">1</text></g><g class="tick" transform="translate(62.162162162162154,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">2</text></g><g class="tick" transform="translate(93.24324324324324,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">3</text></g><g class="tick" transform="translate(124.32432432432431,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">4</text></g><g class="tick" transform="translate(155.4054054054054,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">5</text></g><g class="tick" transform="translate(186.48648648648648,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">6</text></g><g class="tick" transform="translate(217.56756756756758,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">7</text></g><g class="tick" transform="translate(248.64864864864862,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">8</text></g><g class="tick" transform="translate(279.72972972972974,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">9</text></g><g class="tick" transform="translate(310.8108108108108,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">10</text></g><g class="tick" transform="translate(341.8918918918919,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">11</text></g><g class="tick" transform="translate(372.97297297297297,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">12</text></g><g class="tick" transform="translate(404.054054054054,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">13</text></g><g class="tick" transform="translate(435.13513513513516,0)" style="opacity: 1;"><line y2="360" x2="0"></line><text dy="0em" y="-3" x="0" style="text-anchor: middle;">14</text></g><path class="domain" d="M0,360V0H460V360"></path></g><g class="y axis"><g class="tick" transform="translate(0,20)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">00</text></g><g class="tick" transform="translate(0,40)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">01</text></g><g class="tick" transform="translate(0,60)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">02</text></g><g class="tick" transform="translate(0,80)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">03</text></g><g class="tick" transform="translate(0,100)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">04</text></g><g class="tick" transform="translate(0,120)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">05</text></g><g class="tick" transform="translate(0,140)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">06</text></g><g class="tick" transform="translate(0,160)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">07</text></g><g class="tick" transform="translate(0,180)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">08</text></g><g class="tick" transform="translate(0,200)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">09</text></g><g class="tick" transform="translate(0,220)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">10</text></g><g class="tick" transform="translate(0,240)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">11</text></g><g class="tick" transform="translate(0,260)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">12</text></g><g class="tick" transform="translate(0,280)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">13</text></g><g class="tick" transform="translate(0,300)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">14</text></g><g class="tick" transform="translate(0,320)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">15</text></g><g class="tick" transform="translate(0,340)" style="opacity: 1;"><line x2="0" y2="0"></line><text dy=".32em" x="-3" y="0" style="text-anchor: end; fill-opacity: 0;">16</text></g><path class="domain" d="M0,0H0V360H0" style="stroke: none;"></path></g><g class="bar" transform="translate(0, 15)"><rect width="372.97297297297297" height="10" class="marks bar" id="bar0" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 35)"><rect width="404.054054054054" height="10" class="marks bar" id="bar1" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 55)"><rect width="407.16216216216213" height="10" class="marks bar" id="bar2" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 75)"><rect width="317.02702702702703" height="10" class="marks bar" id="bar3" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 95)"><rect width="357.4324324324324" height="10" class="marks bar" id="bar4" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 115)"><rect width="376.0810810810811" height="10" class="marks bar" id="bar5" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 135)"><rect width="376.0810810810811" height="10" class="marks bar" id="bar6" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 155)"><rect width="354.3243243243243" height="10" class="marks bar" id="bar7" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 175)"><rect width="344.99999999999994" height="10" class="marks bar" id="bar8" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 195)"><rect width="407.16216216216213" height="10" class="marks bar" id="bar9" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 215)"><rect width="460" height="10" class="marks bar" id="bar10" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 235)"><rect width="214.45945945945945" height="10" class="marks bar" id="bar11" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 255)"><rect width="189.59459459459458" height="10" class="marks bar" id="bar12" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 275)"><rect width="186.48648648648648" height="10" class="marks bar" id="bar13" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 295)"><rect width="192.7027027027027" height="10" class="marks bar" id="bar14" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 315)"><rect width="226.89189189189187" height="10" class="marks bar" id="bar15" rx="4" ry="4"></rect></g><g class="bar" transform="translate(0, 335)"><rect width="189.59459459459458" height="10" class="marks bar" id="bar16" rx="4" ry="4"></rect></g></g><g class="label"><text x="27" y="10">months as a customer</text></g></svg>
+<div class="slider"><input type="range" min="0" max="0.2" value="0.03" step="0.01" id="slider" style="top: 410px; left: 25px; height: 36px; width: 440px; position: fixed;"><output for="slider" id="churnRate">0.03 churn per month</output></div></body></html>
